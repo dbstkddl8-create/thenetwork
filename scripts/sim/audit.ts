@@ -166,6 +166,28 @@ async function trustAndPlans(b: Block) {
     expect(t.level("x")).toBe("ok");
   });
 
+  await b.run("trust decay: a new abuse signal restarts the 14 clean days, so watch lasts 14 days from 3", () => {
+    const t = new Trust();
+    const at = Date.UTC(2026, 9, 5, 13);
+    // One report from a member they met: no points, but the record exists and the daily run starts its clock.
+    expect(t.report("x", "a", at, { met: true })).toBe(0);
+    for (let d = 1; d <= 13; d++) t.decay(at + d * DAY);
+    // Abuse from a clean record stops at watch (handleAbuse adds min(risk, HOLD - 1) = 3).
+    t.add("x", at + 13 * DAY + 20 * HOUR, "harassment", 3);
+    expect(t.level("x")).toBe("watch");
+    const levels: string[] = [];
+    for (let d = 14; d <= 28; d++) { t.decay(at + d * DAY); levels.push(t.level("x")); }
+    // Daily runs on days 14-27 are inside the 14 clean days; the day-28 run is the first after them.
+    expect(levels).toEqual([...Array(14).fill("watch"), "ok"]);
+    expect(t.get("x").score).toBe(2);
+    // A first offence on a new record keeps its 14 days and no more.
+    const u = new Trust();
+    u.add("y", at + 20 * HOUR, "harassment", 3);
+    const first: string[] = [];
+    for (let d = 1; d <= 15; d++) { u.decay(at + d * DAY); first.push(u.level("y")); }
+    expect(first).toEqual([...Array(14).fill("watch"), "ok"]);
+  });
+
   await b.run("attention-MISSED-1: a plan invite the member answered carries repliedAt, so the plan allowance is not spent for good", () => {
     const at = Date.UTC(2026, 9, 5);
     const l = planLedger("m1", [at, at + 2 * DAY, at + 4 * DAY], [at + HOUR, at + 2 * DAY + HOUR]);

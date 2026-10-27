@@ -82,7 +82,8 @@ export class Trust {
 
   add(id: MemberId, now: number, kind: TrustEvent["kind"], points: number, by?: MemberId) {
     const r = this.get(id);
-    r.lastDecay ??= now;
+    // Clean time starts again at each new signal (one point per 14 days with no new signal).
+    if (points > 0 || r.lastDecay === undefined) r.lastDecay = now;
     r.score += points;
     const e: TrustEvent = { at: now, kind, points, by };
     r.events.push(e);
