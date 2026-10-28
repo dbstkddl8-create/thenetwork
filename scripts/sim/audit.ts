@@ -188,6 +188,28 @@ async function trustAndPlans(b: Block) {
     expect(first).toEqual([...Array(14).fill("watch"), "ok"]);
   });
 
+  await b.run("trust decay: watch lasts 14 days per point above 2, and a backdated event never moves the clock back", () => {
+    const at = Date.UTC(2026, 9, 5, 13);
+    // Documented boundaries: from 4 points the first daily run that reads ok is day 42, from 5 points it is day 56.
+    for (const [points, okDay] of [[4, 42], [5, 56]] as const) {
+      const t = new Trust();
+      expect(t.report("x", "a", at, { met: true })).toBe(0);
+      for (let d = 1; d <= 13; d++) t.decay(at + d * DAY);
+      t.add("x", at + 13 * DAY + 20 * HOUR, "harassment", points);
+      const levels: string[] = [];
+      for (let d = 14; d <= okDay; d++) { t.decay(at + d * DAY); levels.push(t.level("x")); }
+      expect(levels).toEqual([...Array(okDay - 14).fill("watch"), "ok"]);
+    }
+    // An event stamped earlier than the current clock must not shorten the clean time.
+    const u = new Trust();
+    u.add("y", at, "harassment", 3);
+    u.decay(at + 20 * DAY);
+    expect(u.get("y").score).toBe(2);
+    u.add("y", at + 5 * DAY, "harassment", 3);
+    u.decay(at + 21 * DAY);
+    expect(u.get("y").score).toBe(5);
+  });
+
   await b.run("attention-MISSED-1: a plan invite the member answered carries repliedAt, so the plan allowance is not spent for good", () => {
     const at = Date.UTC(2026, 9, 5);
     const l = planLedger("m1", [at, at + 2 * DAY, at + 4 * DAY], [at + HOUR, at + 2 * DAY + HOUR]);
